@@ -7,16 +7,20 @@ void ShowParts(Partition* head);
 
 struct Partition	//空闲分区
 {
-	int startPosi;			//起始地址
-	int size;				//大小
-	Partition* next; //下一结点
+	int startPosi;		//起始地址
+	int size;			//大小
+	Partition* next;	//下一结点
+	Partition* last;	//上一结点
 };
 
-Partition* InitNode(int startPos, int memSize, Partition* next) {
+Partition* InitNode(int startPos, int memSize, Partition* next, Partition* last) {
 	Partition* newNode = (Partition*)malloc(sizeof(Partition));
 	newNode->startPosi = startPos;
 	newNode->size = memSize;
 	newNode->next = next;
+	if (next != NULL) next->last = newNode;
+	newNode->last = last;
+	if (last != NULL) last->next = newNode;
 	return newNode;
 }
 
@@ -27,6 +31,8 @@ Partition* CreateHead(int size) {
 	part->startPosi = 0;
 	Partition* head = (Partition*)malloc(sizeof(Partition));
 	head->next = part;
+	head->last = NULL;
+	part->last = head;
 	return head;
 }
 
@@ -40,22 +46,6 @@ void DestroyPart(Partition* head) {
 		q = q->next;
 	}
 	free(p);
-}
-
-//打乱数组顺序
-void shuffle(int* a, int length) {
-	int num = 20;
-	while (num--) {
-		int index1 = rand() % length;
-		int index2 = rand() % length;
-		if (index1 == index2) {
-			num++;
-			continue;
-		}
-		int t = a[index1];
-		a[index1] = a[index2];
-		a[index2] = t;
-	}
 }
 
 //概率判断
@@ -107,16 +97,16 @@ int* InitMemory(int jobNum, int minMemory, int maxMemory) {
 ******************************************************/
 int FF(Partition* head, int memSize) {
 	Partition* p = head->next;
-	Partition* last = head;
 	while (p != NULL && p->size < memSize) {
 		p = p->next;
-		last = last->next;
 	}
 	int startPos;
 	if (p == NULL) return -1;	//p == NULL表示已经查找到链尾
 	else if (p->size == memSize) {
+		Partition* last = p->last;
 		startPos = p->startPosi;
 		last->next = p->next;
+		if (p->next != NULL) p->next->last = last;
 		free(p);
 	}
 	else {
@@ -137,7 +127,7 @@ int FF(Partition* head, int memSize) {
 ******************************************************/
 void OrderRecycle(Partition* head, Partition** start, int startPos, int memSize, enum Mode mode) {
 	Partition* p = head->next;
-	Partition* last = head;
+	Partition* last = head;	//需要判断指针p是否为NULL，当p=NULL时不能调用p->last，所以要使用一个last指针
 	while (p != NULL && p->startPosi < startPos) {
 		//将p和last移动到startPos的两边
 		last = p;
@@ -145,8 +135,7 @@ void OrderRecycle(Partition* head, Partition** start, int startPos, int memSize,
 	}
 	if (last == head && p == NULL) {
 		//如果链表是空的
-		Partition* node = InitNode(startPos, memSize, NULL);
-		last->next = node;
+		Partition* node = InitNode(startPos, memSize, NULL, last);
 		if (mode == NEXT_FIT) (*start) = node;
 	}
 	else if (p != NULL && last == head && startPos + memSize == p->startPosi) {
@@ -164,6 +153,7 @@ void OrderRecycle(Partition* head, Partition** start, int startPos, int memSize,
 		if (*start == p) flag = 1;
 		last->size += memSize + p->size;
 		last->next = p->next;
+		if (p->next != NULL) p->next->last = last;
 		free(p);
 		if (mode == NEXT_FIT && flag) *start = last->next == NULL ? head->next : last->next;
 	}
@@ -178,8 +168,7 @@ void OrderRecycle(Partition* head, Partition** start, int startPos, int memSize,
 	}
 	else {
 		//不能合并
-		Partition* node = InitNode(startPos, memSize, p);
-		last->next = node;
+		Partition* node = InitNode(startPos, memSize, p, last);
 	}
 }
 
@@ -191,47 +180,23 @@ void OrderRecycle(Partition* head, Partition** start, int startPos, int memSize,
 	返回作业的首地址，若分区失败，则返回-1
 ******************************************************/
 int NF(Partition* head, Partition** start, int memSize) {
-	//先判断起始查寻结点的大小是否满足请求
 	//if (*start != head && *start != NULL) printf("运行前start: %d %d\n", (*start)->startPosi, (*start)->size);
-	if (*start == head) return -1;
-	else if ((*start)->size > memSize) {
-		int startIndex = (*start)->startPosi;
-		(*start)->size -= memSize;
-		(*start)->startPosi += memSize;
-		*start = (*start)->next == NULL ? head->next : (*start)->next;
-		return startIndex;
-	}
-	else if ((*start)->size == memSize) {
-		int startIndex = (*start)->startPosi;
-		Partition* p = head;
-		while (p->next != (*start)) p = p->next;
-		p->next = (*start)->next;
-		free((*start));
-		*start = p->next == NULL ? (head->next == NULL ? head : head->next) : p->next;
-		return startIndex;
-	}
-	//再判断其他结点的大小是否满足请求
+	if (head->next == NULL) return -1;
 	Partition* sstart = (*start);
-	Partition* last = *start;
-	if ((*start)->next == NULL) {
-		if (head->next != sstart) *start = head->next;
-		else return -1;		//如果链表中只有start一个结点，则分区失败
-	}
-	else *start = (*start)->next;
 	while ((*start)->size < memSize) {
-		last = *start;
 		*start = (*start)->next == NULL ? head->next : (*start)->next;
 		if (*start == sstart) return -1;
 	}
 	int startIndex = (*start)->startPosi;
-	if (*start == head->next) last = head;
 	if ((*start)->size > memSize) {
 		(*start)->size -= memSize;
 		(*start)->startPosi += memSize;
 		*start = (*start)->next == NULL ? head->next : (*start)->next;
 	}
 	else {
-		last->next = (*start)->next;
+		Partition* last = (*start)->last;
+		(*start)->last->next = (*start)->next;
+		if ((*start)->next != NULL) (*start)->next->last = (*start)->last;
 		free(*start);
 		*start = last->next == NULL ? head->next : last->next;
 	}
@@ -246,12 +211,12 @@ int NF(Partition* head, Partition** start, int memSize) {
 ******************************************************/
 void BWFSequence(Partition* sequence, int startPos, int memSize) {
 	Partition* p = sequence->next;
-	Partition* last = sequence;
 	while (p != NULL) {
 		//分配内存的情况
 		if (startPos + memSize == p->startPosi + p->size) {
 			if (memSize == 0) {
-				last->next = p->next;
+				p->last->next = p->next;
+				if (p->next != NULL) p->next->last = p->last;
 				free(p);
 			}
 			else {
@@ -264,9 +229,9 @@ void BWFSequence(Partition* sequence, int startPos, int memSize) {
 		else if (p != sequence && p->next != NULL && p->startPosi == startPos && p->next->startPosi + p->next->size == startPos + memSize) {
 			//内存回收时向两边合并
 			p->size = memSize;
-			last = p;
 			p = p->next;
-			last->next = p->next;
+			p->last->next = p->next;
+			if (p->next != NULL) p->next->last = p->last;
 			free(p);
 			return;
 		}
@@ -283,16 +248,18 @@ void BWFSequence(Partition* sequence, int startPos, int memSize) {
 		}
 		else if (startPos + memSize < p->startPosi) {
 			//内存回收时未合并
-			Partition* node = InitNode(startPos, memSize, p);
-			last->next = node;
+			Partition* node = InitNode(startPos, memSize, p, p->last);
 			return;
 		}
-		last = p;
 		p = p->next;
 	}
-	if (p == NULL) {
-		p = InitNode(startPos, memSize, NULL);
-		last->next = p;
+	if (p == NULL && sequence->next == NULL) {
+		InitNode(startPos, memSize, NULL, sequence);
+	}
+	else if (p == NULL) {	//在空闲分区链末尾回收内存
+		Partition* last = sequence->next;
+		while (last->next != NULL) last = last->next;
+		p = InitNode(startPos, memSize, NULL, last);
 	}
 }
 
@@ -305,9 +272,7 @@ void BWFSequence(Partition* sequence, int startPos, int memSize) {
 ******************************************************/
 int BWF(Partition* head, int memSize, enum Mode mode, Partition* sequence) {
 	Partition* p = head->next;
-	Partition* last = head;
 	while (p != NULL && p->size < memSize) {
-		last = p;
 		p = p->next;
 	}
 	int startIndex;
@@ -315,7 +280,8 @@ int BWF(Partition* head, int memSize, enum Mode mode, Partition* sequence) {
 	else if (p->size == memSize) {
 		BWFSequence(sequence, p->startPosi + p->size, 0);
 		startIndex = p->startPosi;
-		last->next = p->next;
+		p->last->next = p->next;
+		if (p->next != NULL) p->next->last = p->last;
 		free(p);
 	}
 	else {
@@ -324,8 +290,9 @@ int BWF(Partition* head, int memSize, enum Mode mode, Partition* sequence) {
 		p->size -= memSize;
 		p->startPosi += memSize;
 		BWFSequence(sequence, p->startPosi, p->size);
-		last->next = p->next;
-		last = head;
+		p->last->next = p->next;	//将p提出链表
+		if (p->next != NULL) p->next->last = p->last;
+		Partition* last = head;
 		while (last->next != NULL) {
 			if (mode == BEST_FIT && last->next->size > p->size) break;
 			if (mode == WORST_FIT && last->next->size < p->size) break;
@@ -334,10 +301,13 @@ int BWF(Partition* head, int memSize, enum Mode mode, Partition* sequence) {
 		if (last->next == NULL) {
 			last->next = p;
 			p->next = NULL;
+			p->last = last;
 		}
 		else {
 			p->next = last->next;
+			if (last->next != NULL) last->next->last = p;
 			last->next = p;
+			p->last = last;
 		}
 	}
 	return startIndex;
@@ -349,53 +319,54 @@ int BWF(Partition* head, int memSize, enum Mode mode, Partition* sequence) {
 ******************************************************/
 void UnorderedRecycle(Partition* head, int startPos, int memSize, enum Mode mode, Partition* sequence) {
 	Partition* forward = head->next;	//向前合并的结点
-	Partition* forwardLast = head;		//指向forward的上一个结点
 	Partition* backward = head->next;	//向后合并的结点
-	Partition* backwardLast = head;		//指向backward的上一个结点
 	while (forward != NULL && backward != NULL) {
-		if (forward->startPosi + forward->size != startPos) forwardLast = forward, forward = forward->next;
-		if (startPos + memSize != backward->startPosi) backwardLast = backward, backward = backward->next;
+		if (forward->startPosi + forward->size != startPos) forward = forward->next;
+		if (startPos + memSize != backward->startPosi) backward = backward->next;
 		if (forward != NULL && backward != NULL && forward->startPosi + forward->size == startPos && startPos + memSize == backward->startPosi) break;
 	}
-	
 	//将所有需要重新判断位置的结点设置为forward，便于下一步位置的设置
 	if (forward != NULL && backward != NULL) {
 		//向两边合并
-		if (forward == backwardLast) {
-			backwardLast = backward->next;
-			forwardLast->next = backwardLast;
+		if (forward == backward->last) {
+			forward->last->next = backward->next;
+			if (backward->next != NULL) backward->next->last = forward->last;
 		}
-		else if (backward == forwardLast) {
-			forwardLast = forward->next;
-			backwardLast->next = forwardLast;
+		else if (backward == forward->last) {
+			backward->last->next = forward->next;
+			if (forward->next != NULL) forward->next->last = backward->last;
 		}
 		else {
-			backwardLast->next = backward->next;
-			forwardLast->next = forward->next;
+			backward->last->next = backward->next;
+			if (backward->next != NULL) backward->next->last = backward->last;
+			forward->last->next = forward->next;
+			if (forward->next != NULL) forward->next->last = forward->last;
 		}
 		forward->size = forward->size + memSize + backward->size;
 		free(backward);
 	}
 	else if (forward != NULL) {
 		//向前合并
-		forwardLast->next = forward->next;
+		forward->last->next = forward->next;
+		if (forward->next != NULL) forward->next->last = forward->last;
 		forward->size += memSize;
 	}
 	else if (backward != NULL) {
 		//向后合并
-		backwardLast->next = backward->next;
+		backward->last->next = backward->next;
+		if (backward->next != NULL) backward->next->last = backward->last;
 		backward->startPosi = startPos;
 		backward->size += memSize;
 		forward = backward;
 	}
 	else {
 		//不能合并
-		Partition* node = InitNode(startPos, memSize, NULL);
+		Partition* node = InitNode(startPos, memSize, NULL, NULL);
 		forward = node;
 	}
 	BWFSequence(sequence, forward->startPosi, forward->size);
 	Partition* p = head->next;
-	Partition* last = head;
+	Partition* last = head;	//链表可能为空, 当链表为空时无法调用p->last，需要用last指针来表示p的上一个结点
 	while (p != NULL){
 		if (mode == BEST_FIT && p->size > forward->size || mode == WORST_FIT && p->size < forward->size) break;
 		last = p;
@@ -403,6 +374,8 @@ void UnorderedRecycle(Partition* head, int startPos, int memSize, enum Mode mode
 	}
 	last->next = forward;
 	forward->next = p;
+	forward->last = last;
+	if (p != NULL) p->last = forward;
 }
 
 //显示空闲分区链表
@@ -410,9 +383,9 @@ void ShowParts(Partition* head) {
 	Partition* p = head->next;
 	int partNum = 0;
 	printf("=====================================\n");
-	printf("= 分区号      起始地址      分区大小  \n");
+	printf(" 分区号      起始地址      分区大小  \n");
 	while (p != NULL) {
-		printf("=   %d\t\t%d\t     %d\n", partNum, p->startPosi, p->size);
+		printf("   %d\t\t%d\t     %d\n", partNum + 1, p->startPosi, p->size);
 		p = p->next;
 		partNum++;
 	}

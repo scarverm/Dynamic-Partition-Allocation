@@ -93,7 +93,7 @@ int main() {
 		
 		
 		//内存申请序列，用于储存作业申请的内存大小，
-		int* memory = InitMemory(job, 10, 200);
+		int* memory = InitMemory(job, 10,500);
 
 		//作业被分配空间的起始地址，作为回收内存时的标记
 		int* startPos = (int*)malloc(job * sizeof(int));
@@ -128,7 +128,7 @@ int main() {
 					//回收内存
 					if (hideDetails == 'n')
 						printf("回收作业%d的内存:  起始地址:%d\t内存大小:%d\n", request[j], startPos[request[j]], memory[request[j]]);
-					OrderRecycle(head, head, startPos[request[j]], memory[request[j]], FIRST_FIT);
+					OrderRecycle(head, &head, startPos[request[j]], memory[request[j]], FIRST_FIT);
 				}
 				work[request[j]]--;
 				if (hideDetails == 'n') ShowParts(head);
